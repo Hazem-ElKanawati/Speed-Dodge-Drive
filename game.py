@@ -10,6 +10,9 @@ from utils import load_high_score, save_high_score, aabb
 from player import Player
 from spawner import Spawner
 from ui import Overlay
+from utils import load_texture
+from spawner import Spawner, Building
+
 
 # Config
 WIN_W, WIN_H = 900, 900
@@ -18,12 +21,16 @@ LANE_COUNT = 3
 LANE_SPACING = 3.0
 LANE_X = [-(LANE_SPACING) + i * LANE_SPACING for i in range(LANE_COUNT)]
 CAMERA_POS = (0.0, 3.2, 12.0)
-CAMERA_LOOK_AT = (0.0, 0.2, 0.0)
+CAMERA_LOOK_AT = (0.0, -0.2, 0.0)
 PLAYER_Z = 2.0
 OBSTACLE_START_Z = -80.0
 OBSTACLE_SPEED = 20.0
 SPAWN_INTERVAL = 0.8
 COIN_SPAWN_CHANCE = 0.28
+road_half_width = (LANE_SPACING * (LANE_COUNT - 1)) / 2.0
+side_offset = road_half_width + 12
+BUILDING_SPAWN_AHEAD = 18.0  # how far ahead of camera (tweak 15–25)
+
 
 # Lateral move scaling defaults (tie lateral duration to forward speed)
 BASE_FORWARD_SPEED = OBSTACLE_SPEED
@@ -32,17 +39,21 @@ MIN_MOVE_DURATION = 0.02    # fastest allowed lateral move
 MAX_MOVE_DURATION = 0.18    # slowest allowed lateral move
 
 def draw_ground():
-    glColor3f(0.10, 0.10, 0.12)
+    glColor3f(0.35, 0.35, 0.35)
     glBegin(GL_QUADS)
     glVertex3f(-40.0, -2.4, -300.0); glVertex3f(40.0, -2.4, -300.0)
     glVertex3f(40.0, -2.4, 80.0); glVertex3f(-40.0, -2.4, 80.0)
     glEnd()
-    for i in range(LANE_COUNT + 1):
-        x = -LANE_SPACING + i * LANE_SPACING
+    # lane separator lines (BETWEEN lanes)
+    for i in range(LANE_COUNT - 1):
+        x = -LANE_SPACING / 2 + i * LANE_SPACING
+
         glColor3f(0.15, 0.15, 0.18)
         glBegin(GL_QUADS)
-        glVertex3f(x - 0.06, -2.35, -300.0); glVertex3f(x + 0.06, -2.35, -300.0)
-        glVertex3f(x + 0.06, -2.35, 80.0); glVertex3f(x - 0.06, -2.35, 80.0)
+        glVertex3f(x - 0.06, -2.35, -300.0)
+        glVertex3f(x + 0.06, -2.35, -300.0)
+        glVertex3f(x + 0.06, -2.35, 80.0)
+        glVertex3f(x - 0.06, -2.35, 80.0)
         glEnd()
 
 class Game:
@@ -52,15 +63,21 @@ class Game:
         self.screen = pygame.display.set_mode((WIN_W, WIN_H), flags)
         pygame.display.set_caption("Lane3D Runner - Modular")
         glEnable(GL_DEPTH_TEST)
-        glEnable(GL_CULL_FACE)
+        #glEnable(GL_CULL_FACE)
         glClearColor(0.05, 0.05, 0.06, 1.0)
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
         gluPerspective(50.0, WIN_W / WIN_H, 0.1, 300.0)
         glMatrixMode(GL_MODELVIEW)
+        self.sky_tex = load_texture("assets/sky.jpg")
+        print("[DEBUG] sky texture id:", self.sky_tex)
 
         self.clock = pygame.time.Clock()
         self.player = Player(LANE_X, start_lane=1, y=-1.0, z=PLAYER_Z)
+        print("[DEBUG] Player start lane:", self.player.lane)
+        print("[DEBUG] Player start x:", self.player.x)
+
+        self.buildings =[]
         self.obstacles = []
         self.coins = []
         self.spawner = Spawner(LANE_X, OBSTACLE_START_Z, coin_chance=COIN_SPAWN_CHANCE)
@@ -82,6 +99,9 @@ class Game:
         self.font = pygame.font.SysFont("Arial", 26)
         self.large_font = pygame.font.SysFont("Arial", 44)
         self.particles = []
+       
+
+        
 
     def spawn(self):
         self.spawner.spawn_pattern(self.obstacles, self.coins)
@@ -125,6 +145,8 @@ class Game:
         for p in self.particles:
             p.update(dt)
         self.particles = [p for p in self.particles if p.is_alive()]
+        PARALLAX = 0.35
+
         if self.state != "playing":
             return
 
@@ -144,11 +166,7 @@ class Game:
         self.player.move_duration = max(MIN_MOVE_DURATION, min(MAX_MOVE_DURATION, scaled))
 
         # spawning logic
-        self.spawn_timer += dt
-        if self.spawn_timer >= self.spawn_interval:
-            self.spawn_timer = 0.0
-            self.spawn()
-            self.spawn_interval = max(0.4, self.spawn_interval * 0.995)
+        
 
         dz = self.speed * dt
         for o in self.obstacles:
@@ -220,15 +238,69 @@ class Game:
                 print(f"[GAME OVER] Max combo: {self.max_combo}x")
                 
                 break
+        self.spawn_timer += dt
+        if self.spawn_timer >= self.spawn_interval:
+            self.spawn_timer = 0.0
+            self.spawn_buildings()
+            self.spawn()
+            self.spawn_interval = max(0.4, self.spawn_interval * 0.995)
+        for b in self.buildings:
+            b.update(dz)
+        self.buildings = [b for b in self.buildings if b.z < CAMERA_POS[2] + 10.0]
+        for b in self.buildings:
+             b.update(dz * PARALLAX)
 
     def look_at_camera(self):
         glLoadIdentity()
-        gluLookAt(CAMERA_POS[0], CAMERA_POS[1], CAMERA_POS[2],
-                  CAMERA_LOOK_AT[0], CAMERA_LOOK_AT[1], CAMERA_LOOK_AT[2],
-                  0.0, 1.0, 0.0)
+        px= self.player.x
+        gluLookAt(
+        px, CAMERA_POS[1], CAMERA_POS[2],   # camera follows player X
+        px, CAMERA_LOOK_AT[1], CAMERA_LOOK_AT[2],
+        0.0, 1.0, 0.0
+    )
+        
+    def draw_sky(self):
+    # --- Save state ---
+        glDisable(GL_DEPTH_TEST)
+
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        gluOrtho2D(-1, 1, -1, 1)
+
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+
+        glEnable(GL_TEXTURE_2D)
+        glBindTexture(GL_TEXTURE_2D, self.sky_tex)
+
+    # IMPORTANT: reset color so texture is not darkened
+        glColor3f(1.0, 1.0, 1.0)
+
+        glBegin(GL_QUADS)
+        glTexCoord2f(0, 0); glVertex2f(-1, -0.6)
+        glTexCoord2f(1, 0); glVertex2f( 1, -0.6)
+        glTexCoord2f(1, 1); glVertex2f( 1,  1)
+        glTexCoord2f(0, 1); glVertex2f(-1,  1)
+        glEnd()
+
+
+        glBindTexture(GL_TEXTURE_2D, 0)
+        glDisable(GL_TEXTURE_2D)
+
+        glPopMatrix()
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
+
+        glEnable(GL_DEPTH_TEST)
+
 
     def draw_scene(self):
         draw_ground()
+        for b in self.buildings:
+            b.draw()
         for c in self.coins: c.draw()
         for o in self.obstacles: o.draw()
         self.player.draw()
@@ -358,6 +430,7 @@ class Game:
 
             self.update(dt)
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+            self.draw_sky()          
             self.look_at_camera()
             self.draw_scene()
             # build overlay and draw
@@ -407,3 +480,26 @@ class Particle:
             draw_cube((self.x, self.y, self.z), 
                      (self.size, self.size, self.size), 
                      (1.0, 0.85, 0.25))
+    def spawn_buildings(self):
+        road_half_width = (LANE_SPACING * (LANE_COUNT - 1)) / 2.0
+        side_offset = road_half_width + 4.5
+
+        for side in (-1, 1):  # left & right
+            x = side * side_offset
+            z = CAMERA_POS[2] - BUILDING_SPAWN_AHEAD - random.uniform(0, 5)
+
+            if random.random() < 0.7:
+                height = random.uniform(4.0, 10.0)
+            else:
+                height = random.uniform(12.0, 22.0)
+            width  = random.uniform(2.5, 4.0)
+            depth  = random.uniform(8.0, 12.0)
+
+            self.buildings.append(
+            Building(x, z, width=width, depth=depth, height=height)
+            )
+        print("[DEBUG] buildings count:", len(self.buildings))
+
+
+
+
