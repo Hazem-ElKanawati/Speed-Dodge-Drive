@@ -130,7 +130,8 @@ class Game:
         self.spawn_timer += dt
         if self.spawn_timer >= self.spawn_interval:
             self.spawn_timer = 0.0
-            self.spawn()
+            self.spawn()               # obstacles + coins
+            self.spawn_buildings()     # buildings
             self.spawn_interval = max(0.4, self.spawn_interval * 0.995)
 
         dz = self.speed * dt
