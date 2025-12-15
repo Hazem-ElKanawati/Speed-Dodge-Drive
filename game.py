@@ -28,7 +28,7 @@ OBSTACLE_SPEED = 20.0
 SPAWN_INTERVAL = 0.8
 COIN_SPAWN_CHANCE = 0.28
 road_half_width = (LANE_SPACING * (LANE_COUNT - 1)) / 2.0
-side_offset = road_half_width + 4.5
+side_offset = road_half_width + 12
 BUILDING_SPAWN_AHEAD = 18.0  # how far ahead of camera (tweak 15–25)
 
 
@@ -339,7 +339,7 @@ class Game:
                 height = random.uniform(4.0, 10.0)
             else:
                 height = random.uniform(12.0, 22.0)
-            width  = random.uniform(5.0, 8.0)
+            width  = random.uniform(2.5, 4.0)
             depth  = random.uniform(8.0, 12.0)
 
             self.buildings.append(
