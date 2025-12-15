@@ -68,14 +68,20 @@ class Game:
         self.spawn_interval = SPAWN_INTERVAL
         self.speed = OBSTACLE_SPEED
         self.score = 0
+        self.combo = 0
+        self.combo_timer = 0.0
+        self.combo_timeout = 3.0  # seconds to get next coin
+        self.max_combo = 0  # track best combo this run
         self.highscore = load_high_score()
         print("[DEBUG] loaded highscore:", self.highscore)  # confirm load on startup
         self.state = "menu"  # menu / playing / gameover
         self.running = True
+        
 
         self.overlay = Overlay(WIN_W, WIN_H)
         self.font = pygame.font.SysFont("Arial", 26)
         self.large_font = pygame.font.SysFont("Arial", 44)
+        self.particles = []
 
     def spawn(self):
         self.spawner.spawn_pattern(self.obstacles, self.coins)
@@ -88,7 +94,11 @@ class Game:
         self.spawn_interval = SPAWN_INTERVAL
         self.speed = OBSTACLE_SPEED
         self.score = 0
+        self.combo = 0
+        self.combo_timer = 0.0
+        self.max_combo = 0
         self.state = "playing"
+        self.particles = []
 
     def toggle_fullscreen(self):
         pygame.display.toggle_fullscreen()
@@ -110,13 +120,23 @@ class Game:
                 self.highscore = max(self.highscore, self.score)
                 save_high_score(self.highscore)
                 self.reset()
-
+                   
     def update(self, dt):
+        for p in self.particles:
+            p.update(dt)
+        self.particles = [p for p in self.particles if p.is_alive()]
         if self.state != "playing":
             return
 
         # accelerate forward speed slightly every frame
         self.speed += dt * 0.9
+
+        if self.combo > 0:
+            self.combo_timer -= dt
+            if self.combo_timer <= 0:
+                # Combo expired! Show it briefly then reset
+                self.combo = 0
+                self.combo_timer = 0.0
 
         # scale lateral move duration with forward speed so feel stays consistent
         # higher forward speed -> shorter lateral duration (snappier)
@@ -163,9 +183,29 @@ class Game:
                     self.coins.remove(c)
                 except ValueError:
                     pass
-                self.score += 10
+                
+                # COMBO SYSTEM:
+                self.combo += 1
+                self.combo_timer = self.combo_timeout  # reset timer
+                self.max_combo = max(self.max_combo, self.combo)
+                
+                # Score multiplier based on combo
+                points = 10 * self.combo  # 10, 20, 30, 40...
+                self.score += points
+                
                 self.player.color = (0.48, 1.0, 0.6)
                 self.player.flash = 0.25
+                
+                # MORE PARTICLES for higher combos!
+                base_particles = 8
+                bonus_particles = min(self.combo * 2, 20)  # up to +20 extra
+                num_particles = random.randint(base_particles, base_particles + bonus_particles)
+                for _ in range(num_particles):
+                    self.particles.append(Particle(c.x, c.y, c.z))
+                
+                # Console feedback for debugging
+                print(f"[COMBO x{self.combo}] +{points} points!")
+
 
         # obstacle collision using swept AABB so collisions during slide are fair
         for o in list(self.obstacles):
@@ -175,6 +215,10 @@ class Game:
                 self.state = "gameover"
                 self.highscore = max(self.highscore, self.score)
                 save_high_score(self.highscore)
+                
+                # Show final combo stats
+                print(f"[GAME OVER] Max combo: {self.max_combo}x")
+                
                 break
 
     def look_at_camera(self):
@@ -188,6 +232,12 @@ class Game:
         for c in self.coins: c.draw()
         for o in self.obstacles: o.draw()
         self.player.draw()
+        # Draw particles with blending for fade effect
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        for p in self.particles:
+            p.draw()
+        glDisable(GL_BLEND)
 
     def build_overlay(self):
         """
@@ -198,16 +248,66 @@ class Game:
         surf = self.overlay.surface
 
         if self.state == "playing":
-            # Playing: keep most of overlay transparent so 3D is visible.
-            surf.fill((0, 0, 0, 0))  # fully transparent
-            # Draw small top bar for score/highscore so it's readable
+            surf.fill((0, 0, 0, 0))
             bar_h = 44
             pygame.draw.rect(surf, (12, 12, 14, 220), (0, 0, WIN_W, bar_h))
-            # Score and highscore (bright)
+            
+            # Score (left)
             score_surf = self.font.render(f"Score: {self.score}", True, (255,255,220))
             surf.blit(score_surf, (12, 8))
+            
+            # Highscore (right)
             hs_surf = self.font.render(f"High: {self.highscore}", True, (255,255,220))
             surf.blit(hs_surf, (WIN_W - hs_surf.get_width() - 12, 8))
+            
+            # COMBO DISPLAY (center)
+            if self.combo > 1:  # only show if combo is 2+
+                # Color changes with combo level
+                if self.combo < 5:
+                    combo_color = (255, 255, 100)  # yellow
+                elif self.combo < 10:
+                    combo_color = (255, 180, 50)   # orange
+                else:
+                    combo_color = (255, 80, 80)    # red (on fire!)
+                
+                combo_text = f"COMBO x{self.combo}"
+                combo_surf = self.large_font.render(combo_text, True, combo_color)
+                combo_x = WIN_W // 2 - combo_surf.get_width() // 2
+                combo_y = 50
+                
+                # Add pulsing effect for high combos
+                if self.combo >= 5:
+                    import math
+                    pulse = abs(math.sin(pygame.time.get_ticks() * 0.01)) * 10
+                    combo_y = int(50 + pulse)
+                
+                surf.blit(combo_surf, (combo_x, combo_y))
+                
+                # Timer bar showing time left
+                if self.combo_timer > 0:
+                    bar_width = 200
+                    bar_height = 8
+                    bar_x = WIN_W // 2 - bar_width // 2
+                    bar_y = combo_y + combo_surf.get_height() + 5
+                    
+                    # Background bar (dark)
+                    pygame.draw.rect(surf, (40, 40, 40, 200), 
+                                   (bar_x, bar_y, bar_width, bar_height))
+                    
+                    # Progress bar (colored by time remaining)
+                    progress = self.combo_timer / self.combo_timeout
+                    progress_width = int(bar_width * progress)
+                    
+                    if progress > 0.5:
+                        bar_color = (80, 255, 80)   # green
+                    elif progress > 0.25:
+                        bar_color = (255, 255, 80)  # yellow
+                    else:
+                        bar_color = (255, 80, 80)   # red (almost out!)
+                    
+                    pygame.draw.rect(surf, bar_color, 
+                                   (bar_x, bar_y, progress_width, bar_height))
+
         else:
             # Menu or gameover: show a full semi-opaque panel so text is obvious
             surf.fill((10, 10, 12, 220))
@@ -226,9 +326,21 @@ class Game:
                 surf.blit(start_hint, (WIN_W//2 - start_hint.get_width()//2, WIN_H//2 + 30))
             elif self.state == "gameover":
                 t = self.large_font.render("GAME OVER", True, (255,255,255))
-                t2 = self.font.render(f"Final Score: {self.score}   Press R to restart", True, (240,240,240))
-                surf.blit(t, (WIN_W//2 - t.get_width()//2, WIN_H//2 - 80))
-                surf.blit(t2, (WIN_W//2 - t2.get_width()//2, WIN_H//2 - 20))
+                surf.blit(t, (WIN_W//2 - t.get_width()//2, WIN_H//2 - 100))
+                
+                # Final score
+                t2 = self.font.render(f"Final Score: {self.score}", True, (240,240,240))
+                surf.blit(t2, (WIN_W//2 - t2.get_width()//2, WIN_H//2 - 40))
+                
+                # Max combo achieved
+                combo_text = f"Max Combo: {self.max_combo}x"
+                combo_color = (255, 200, 80) if self.max_combo >= 5 else (200, 200, 200)
+                t3 = self.font.render(combo_text, True, combo_color)
+                surf.blit(t3, (WIN_W//2 - t3.get_width()//2, WIN_H//2 - 5))
+                
+                # Restart instruction
+                t4 = self.font.render("Press R to restart", True, (180, 180, 180))
+                surf.blit(t4, (WIN_W//2 - t4.get_width()//2, WIN_H//2 + 30))
 
         # Note: ui.draw_fullscreen() will handle converting/drawing the surface via glWindowPos/glDrawPixels
 
@@ -253,3 +365,45 @@ class Game:
             self.overlay.draw_fullscreen()
             pygame.display.flip()
         pygame.quit()
+
+class Particle:
+    """A single particle that flies outward and fades away"""
+    def __init__(self, x, y, z):
+        self.x = x
+        self.y = y
+        self.z = z
+        # Random velocity in X and Y (outward burst effect)
+        self.vx = random.uniform(-3, 3)
+        self.vy = random.uniform(1, 4)  # mostly upward
+        self.vz = random.uniform(-1, 1)  # slight forward/back
+        # Lifetime in seconds
+        self.life = random.uniform(0.3, 0.6)
+        self.max_life = self.life
+        # Size shrinks over time
+        self.size = random.uniform(0.2, 0.4)
+        
+    def update(self, dt):
+        """Move particle and decrease lifetime"""
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        self.z += self.vz * dt
+        # Gravity effect
+        self.vy -= 5.0 * dt  # pulls particles down
+        self.life -= dt
+        
+    def is_alive(self):
+        return self.life > 0
+        
+    def draw(self):
+        """Draw particle with fade-out effect"""
+        if self.life > 0:
+            # Fade alpha based on remaining life
+            alpha = self.life / self.max_life
+            # Color: golden yellow
+            glColor4f(1.0, 0.85, 0.25, alpha)
+            
+            # Draw as small cube
+            from player import draw_cube
+            draw_cube((self.x, self.y, self.z), 
+                     (self.size, self.size, self.size), 
+                     (1.0, 0.85, 0.25))

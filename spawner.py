@@ -38,6 +38,7 @@ class Coin:
         self.w = size
         self.h = size
         self.d = size * 0.5
+        self.rotation = 0.0
 
     def rect(self):
         hx, hy, hz = self.w / 2.0, self.h / 2.0, self.d / 2.0
@@ -45,9 +46,16 @@ class Coin:
 
     def update(self, dz):
         self.z += dz
+        self.rotation += 3.0
 
     def draw(self):
-        draw_cube((self.x, self.y, self.z), (self.w, self.h, self.d), COL_COIN)
+        glDisable(GL_CULL_FACE)  # Turn off culling for this coin
+        glPushMatrix()
+        glTranslatef(self.x, self.y, self.z)
+        glRotatef(self.rotation, 0, 1, 0)  # spin around Y axis
+        draw_cube((0, 0, 0), (self.w, self.h, self.d), COL_COIN)
+        glPopMatrix()
+        glEnable(GL_CULL_FACE)  # Turn it back on
 
 class Spawner:
     def __init__(self, lane_x_list, start_z, coin_chance=0.28):
@@ -86,3 +94,4 @@ class Spawner:
         if random.random() < self.coin_chance:
             cl = random.randint(0, len(self.lane_x_list) - 1)
             coins_list.append(Coin(cl, self.lane_x_list[cl], self.start_z + 8.0))
+
