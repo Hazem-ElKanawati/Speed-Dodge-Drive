@@ -10,6 +10,7 @@ from utils import load_high_score, save_high_score, aabb
 from player import Player
 from spawner import Spawner
 from ui import Overlay
+from utils import load_texture
 
 # Config
 WIN_W, WIN_H = 900, 900
@@ -18,7 +19,7 @@ LANE_COUNT = 3
 LANE_SPACING = 3.0
 LANE_X = [-(LANE_SPACING) + i * LANE_SPACING for i in range(LANE_COUNT)]
 CAMERA_POS = (0.0, 3.2, 12.0)
-CAMERA_LOOK_AT = (0.0, 0.2, 0.0)
+CAMERA_LOOK_AT = (0.0, -0.2, 0.0)
 PLAYER_Z = 2.0
 OBSTACLE_START_Z = -80.0
 OBSTACLE_SPEED = 20.0
@@ -52,12 +53,14 @@ class Game:
         self.screen = pygame.display.set_mode((WIN_W, WIN_H), flags)
         pygame.display.set_caption("Lane3D Runner - Modular")
         glEnable(GL_DEPTH_TEST)
-        glEnable(GL_CULL_FACE)
+        #glEnable(GL_CULL_FACE)
         glClearColor(0.05, 0.05, 0.06, 1.0)
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
         gluPerspective(50.0, WIN_W / WIN_H, 0.1, 300.0)
         glMatrixMode(GL_MODELVIEW)
+        self.sky_tex = load_texture("assets/sky.jpg")
+        print("[DEBUG] sky texture id:", self.sky_tex)
 
         self.clock = pygame.time.Clock()
         self.player = Player(LANE_X, start_lane=1, y=-1.0, z=PLAYER_Z)
@@ -182,6 +185,44 @@ class Game:
         gluLookAt(CAMERA_POS[0], CAMERA_POS[1], CAMERA_POS[2],
                   CAMERA_LOOK_AT[0], CAMERA_LOOK_AT[1], CAMERA_LOOK_AT[2],
                   0.0, 1.0, 0.0)
+        
+    def draw_sky(self):
+    # --- Save state ---
+        glDisable(GL_DEPTH_TEST)
+
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        gluOrtho2D(-1, 1, -1, 1)
+
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+
+        glEnable(GL_TEXTURE_2D)
+        glBindTexture(GL_TEXTURE_2D, self.sky_tex)
+
+    # IMPORTANT: reset color so texture is not darkened
+        glColor3f(1.0, 1.0, 1.0)
+
+        glBegin(GL_QUADS)
+        glTexCoord2f(0, 0); glVertex2f(-1, -0.6)
+        glTexCoord2f(1, 0); glVertex2f( 1, -0.6)
+        glTexCoord2f(1, 1); glVertex2f( 1,  1)
+        glTexCoord2f(0, 1); glVertex2f(-1,  1)
+        glEnd()
+
+
+        glBindTexture(GL_TEXTURE_2D, 0)
+        glDisable(GL_TEXTURE_2D)
+
+        glPopMatrix()
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
+
+        glEnable(GL_DEPTH_TEST)
+
 
     def draw_scene(self):
         draw_ground()
@@ -246,6 +287,7 @@ class Game:
 
             self.update(dt)
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+            self.draw_sky()          
             self.look_at_camera()
             self.draw_scene()
             # build overlay and draw
@@ -253,3 +295,5 @@ class Game:
             self.overlay.draw_fullscreen()
             pygame.display.flip()
         pygame.quit()
+
+
