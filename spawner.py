@@ -9,25 +9,76 @@ COL_WALL = (0.9, 0.9, 0.9)
 COL_COIN = (1.0, 0.85, 0.25)
 
 class Obstacle:
-    def __init__(self, lane, x, z, width=1.6, height=1.6, depth=1.6):
-        self.lane = lane
+    def __init__(self, lane_idx, x, z, width=1.6, height=1.6):
+        self.lane = lane_idx
         self.x = x
-        self.y = -1.0
+        self.y = -2.4
         self.z = z
         self.w = width
         self.h = height
-        self.d = depth
-
-    def rect(self):
-        hx, hy, hz = self.w / 2.0, self.h / 2.0, self.d / 2.0
-        return ((self.x - hx, self.y - hy, self.z - hz), (self.x + hx, self.y + hy, self.z + hz))
+        self.d = 1.6
+        
+        # --- SOLID COLORS BASED ON TYPE ---
+        if self.w > 2.0:
+            # Wide Barrier -> Solid Red
+            self.color = (0.9, 0.1, 0.1)
+        elif self.h > 2.0:
+            # Tall Tower -> Solid Dark Blue/Grey
+            self.color = (0.2, 0.2, 0.35)
+        else:
+            # Spike -> Solid Orange
+            self.color = (1.0, 0.5, 0.0)
 
     def update(self, dz):
         self.z += dz
 
     def draw(self):
-        # render as wall-like block (height may vary)
-        draw_cube((self.x, self.y + self.h/2.0, self.z), (self.w, self.h, self.d), COL_WALL)
+        glDisable(GL_TEXTURE_2D)
+        
+        # 1. SPIKE (Pyramid Shape)
+        # Small obstacles are drawn as sharp pyramids
+        if self.w < 2.0 and self.h < 2.5:
+            glPushMatrix()
+            glTranslatef(self.x, self.y, self.z)
+            glColor3f(*self.color)
+            
+            w, h, d = self.w / 2.0, self.h, self.d / 2.0
+            
+            glBegin(GL_TRIANGLES)
+            # Four sides of the pyramid
+            glVertex3f(0, h, 0); glVertex3f(-w, 0, d); glVertex3f(w, 0, d)
+            glVertex3f(0, h, 0); glVertex3f(w, 0, d); glVertex3f(w, 0, -d)
+            glVertex3f(0, h, 0); glVertex3f(w, 0, -d); glVertex3f(-w, 0, -d)
+            glVertex3f(0, h, 0); glVertex3f(-w, 0, -d); glVertex3f(-w, 0, d)
+            glEnd()
+            
+            # Base (bottom)
+            glBegin(GL_QUADS)
+            glVertex3f(-w, 0, d); glVertex3f(w, 0, d); glVertex3f(w, 0, -d); glVertex3f(-w, 0, -d)
+            glEnd()
+            glPopMatrix()
+
+        # 2. WIDE BARRIER & TALL TOWER (Block Shape)
+        # Drawn as simple solid cubes without stripes or details
+        else:
+            draw_cube(
+                (self.x, self.y + self.h/2, self.z), 
+                (self.w, self.h, self.d), 
+                self.color
+            )
+
+    def rect(self):
+        # AABB Collision box
+        hx, hy, hz = self.w / 2, self.h / 2, self.d / 2
+        
+        # Make hitbox slightly forgiving for spikes
+        if self.h < 2.5 and self.w < 2.0:
+            scale = 0.7
+            return (self.x - hx*scale, self.y, self.z - hz*scale), \
+                   (self.x + hx*scale, self.y + self.h*scale, self.z + hz*scale)
+            
+        return (self.x - hx, self.y, self.z - hz), \
+               (self.x + hx, self.y + self.h, self.z + hz)
 class Building:
     def __init__(self, x, z, width=6.0, depth=6.0, height=10.0):
         self.x = x
