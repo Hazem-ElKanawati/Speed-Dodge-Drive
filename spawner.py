@@ -28,6 +28,54 @@ class Obstacle:
     def draw(self):
         # render as wall-like block (height may vary)
         draw_cube((self.x, self.y + self.h/2.0, self.z), (self.w, self.h, self.d), COL_WALL)
+class Building:
+    def __init__(self, x, z, width=6.0, depth=6.0, height=10.0):
+        self.x = x
+        self.y = -1.0
+        self.z = z
+        self.w = width
+        self.h = height
+        self.d = depth
+        base = random.uniform(0.18, 0.35)
+        self.color = (
+            base + random.uniform(-0.05, 0.05),
+            base + random.uniform(-0.05, 0.05),
+            base + random.uniform(-0.05, 0.05),)
+    def draw_windows(self):
+        glColor3f(1.0, 0.9, 0.6)  # warm window light
+
+        rows = int(self.h // 1.5)
+        cols = int(self.w // 1.2)
+
+        for r in range(rows):
+            for c in range(cols):
+            # randomly skip some windows
+                if random.random() < 0.35:
+                    continue
+
+                    wx = self.x - self.w / 2 + 0.6 + c * 1.2
+                    wy = self.y + 0.6 + r * 1.5
+                    wz = self.z + self.d / 2 + 0.01
+
+                    glBegin(GL_QUADS)
+                    glVertex3f(wx - 0.25, wy - 0.35, wz)
+                    glVertex3f(wx + 0.25, wy - 0.35, wz)
+                    glVertex3f(wx + 0.25, wy + 0.35, wz)
+                    glVertex3f(wx - 0.25, wy + 0.35, wz)
+                    glEnd()
+
+
+    def update(self, dz):
+        self.z += dz
+
+    def draw(self):
+        draw_cube(
+            (self.x, self.y + self.h / 2.0, self.z),
+            (self.w, self.h, self.d),
+            self.color
+    )
+        self.draw_windows()
+
 
 class Coin:
     def __init__(self, lane, x, z, size=0.8):
