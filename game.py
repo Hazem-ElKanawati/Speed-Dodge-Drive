@@ -150,11 +150,11 @@ class Game:
     def update(self, dt):
         PARALLAX = 0.35
 
-        # STOP updating if game is over (this ensures generation stops when you lose)
+        # STOP updating if game is over
         if self.state != "playing":
             return
 
-        # 1. Speed Progression
+        # 1. Base Acceleration (gradually gets faster over time naturally)
         self.speed += dt * 0.9
 
         # 2. Controls Feel (Scale lateral speed)
@@ -165,7 +165,6 @@ class Game:
         dz = self.speed * dt
         
         # Move the invisible "spawn cursor" so it stays with the moving world
-        # [CRITICAL FIX] This ensures infinite generation doesn't get left behind
         self.next_building_spawn_z += dz * PARALLAX
 
         # 4. Update Objects (Obstacles & Coins)
@@ -193,15 +192,29 @@ class Game:
         pmin_swept = (swept_min_x, self.player.y - hy, self.player.z - hz)
         pmax_swept = (swept_max_x, self.player.y + hy, self.player.z + hz)
 
-        # Coins
+        # --- COIN COLLECTION & SPEED BOOST ---
         for c in list(self.coins):
             cmin, cmax = c.rect()
             if aabb(pmin_swept, pmax_swept, cmin, cmax):
                 try: self.coins.remove(c)
                 except ValueError: pass
+                
                 self.score += 10
                 self.player.color = (0.48, 1.0, 0.6)
                 self.player.flash = 0.25
+
+                # === SPEED BOOST LOGIC ===
+                # I used larger numbers (2.0, 4.0) because 0.10 is too small to notice
+                if self.score == 100:
+                    self.speed += 2.0  # Boost at 100
+                    print(f"Speed Up! Level 1 (Speed: {self.speed:.1f})")
+                elif self.score == 150:
+                    self.speed += 3.0  # Bigger boost at 150
+                    print(f"Speed Up! Level 2 (Speed: {self.speed:.1f})")
+                elif self.score > 150 and self.score % 50 == 0:
+                    self.speed += 1.5  # Continuous boost every 50 points after
+                    print(f"Speed Up! (Speed: {self.speed:.1f})")
+                # =========================
 
         # Obstacles
         for o in list(self.obstacles):
@@ -221,16 +234,12 @@ class Game:
             self.spawn_interval = max(0.4, self.spawn_interval * 0.995)
         
         # 8. Infinite Building Generation
-        # Move existing buildings
         for b in self.buildings:
              b.update(dz * PARALLAX)
         
-        # Remove buildings that are way behind the camera
         self.buildings = [b for b in self.buildings if b.z < CAMERA_POS[2] + 20.0]
         
-        # Fill the horizon with new buildings
         spawn_horizon = self.player.z - BUILDING_SPAWN_AHEAD
-        
         while self.next_building_spawn_z >= spawn_horizon:
             self.spawn_buildings(self.next_building_spawn_z) 
             self.next_building_spawn_z -= BLOCK_LENGTH

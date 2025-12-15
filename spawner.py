@@ -37,7 +37,7 @@ class Building:
         self.h = height
         self.d = depth
         
-        # --- MIX OF DARK AND BRIGHT COLORS (For the building walls) ---
+        # --- MIX OF DARK AND BRIGHT COLORS ---
         if random.random() < 0.5:
             # Bright Colors
             self.color = (
@@ -53,24 +53,90 @@ class Building:
                 base + random.uniform(-0.05, 0.1),
                 base + random.uniform(-0.05, 0.1),
             )
-            
-        # Pre-calculate a random "Neon" color for some windows
+        
         self.window_tint = (
             random.uniform(0.5, 1.0),
             random.uniform(0.5, 1.0),
             random.uniform(0.5, 1.0)
         )
 
-   
+    def draw_windows(self):
+        glDisable(GL_TEXTURE_2D)
+        glEnable(GL_POLYGON_OFFSET_FILL)
+        glPolygonOffset(-1.0, -1.0)
+        
+        rows = int(self.h // 1.5)
+        cols = int(self.d // 1.5) 
+
+        # Calculate the geometric Left face of the building
+        side_face_x = (self.x - self.w / 2.0) - 0.02
+
+        for r in range(rows):
+            for c in range(cols):
+                if random.random() < 0.3: continue 
+
+                if random.random() < 0.6:
+                    glColor3f(1.0, 1.0, 1.0) 
+                else:
+                    glColor3f(*self.window_tint) 
+
+                wy = self.y + 0.6 + r * 1.5
+                wz = (self.z - self.d / 2.0) + 0.6 + c * 1.5
+
+                glBegin(GL_QUADS)
+                glVertex3f(side_face_x, wy - 0.35, wz - 0.35)
+                glVertex3f(side_face_x, wy - 0.35, wz + 0.35)
+                glVertex3f(side_face_x, wy + 0.35, wz + 0.35)
+                glVertex3f(side_face_x, wy + 0.35, wz - 0.35)
+                glEnd()
+
+        glDisable(GL_POLYGON_OFFSET_FILL)
+
+    def draw_lamp(self):
+        """ Draws a street lamp attached to the sidewalk in front of the building """
+        glDisable(GL_TEXTURE_2D)
+
+        # 1. Determine direction towards the road
+        # If building X is positive, road is to the Left (-1)
+        # If building X is negative, road is to the Right (+1)
+        dir_to_road = -1 if self.x > 0 else 1
+
+        # 2. Position the pole
+        # CHANGED: Reduced offset from 2.0 to 0.75 to move it closer to the building
+        pole_x = self.x + (self.w / 2.0 * dir_to_road) + (0.75 * dir_to_road)
+        pole_y = -1.0
+        pole_z = self.z  
+        
+        pole_h = 3.5     
+        arm_len = 1.5    
+
+        # A. Draw Vertical Pole 
+        draw_cube((pole_x, pole_y + pole_h/2, pole_z), (0.3, pole_h, 0.3), (0.15, 0.15, 0.2))
+
+        # B. Draw Horizontal Arm 
+        arm_center_x = pole_x + (arm_len/2.0 * dir_to_road)
+        arm_height_y = pole_y + pole_h - 0.2
+        draw_cube((arm_center_x, arm_height_y, pole_z), (arm_len, 0.25, 0.25), (0.15, 0.15, 0.2))
+
+        # C. Draw The Light Bulb 
+        light_x = pole_x + ((arm_len - 0.2) * dir_to_road)
+        light_y = arm_height_y - 0.4
+        
+        # Bright Yellow/White Light
+        draw_cube((light_x, light_y, pole_z), (0.5, 0.4, 0.5), (1.0, 1.0, 0.8))
+
     def update(self, dz):
         self.z += dz
 
     def draw(self):
+        # Draw the main building
         draw_cube(
             (self.x, self.y + self.h / 2.0, self.z),
             (self.w, self.h, self.d),
             self.color
         )
+        # Draw the details
+        self.draw_lamp()
 
 class Coin:
     def __init__(self, lane, x, z, size=0.8):
