@@ -36,35 +36,32 @@ class Building:
         self.w = width
         self.h = height
         self.d = depth
-        base = random.uniform(0.18, 0.35)
-        self.color = (
-            base + random.uniform(-0.05, 0.05),
-            base + random.uniform(-0.05, 0.05),
-            base + random.uniform(-0.05, 0.05),)
-    def draw_windows(self):
-        glColor3f(1.0, 0.9, 0.6)  # warm window light
+        
+        # --- MIX OF DARK AND BRIGHT COLORS (For the building walls) ---
+        if random.random() < 0.5:
+            # Bright Colors
+            self.color = (
+                random.uniform(0.6, 1.0), 
+                random.uniform(0.6, 1.0), 
+                random.uniform(0.6, 1.0)
+            )
+        else:
+            # Dark Colors
+            base = random.uniform(0.15, 0.3) 
+            self.color = (
+                base + random.uniform(-0.05, 0.1),
+                base + random.uniform(-0.05, 0.1),
+                base + random.uniform(-0.05, 0.1),
+            )
+            
+        # Pre-calculate a random "Neon" color for some windows
+        self.window_tint = (
+            random.uniform(0.5, 1.0),
+            random.uniform(0.5, 1.0),
+            random.uniform(0.5, 1.0)
+        )
 
-        rows = int(self.h // 1.5)
-        cols = int(self.w // 1.2)
-
-        for r in range(rows):
-            for c in range(cols):
-            # randomly skip some windows
-                if random.random() < 0.35:
-                    continue
-
-                    wx = self.x - self.w / 2 + 0.6 + c * 1.2
-                    wy = self.y + 0.6 + r * 1.5
-                    wz = self.z + self.d / 2 + 0.01
-
-                    glBegin(GL_QUADS)
-                    glVertex3f(wx - 0.25, wy - 0.35, wz)
-                    glVertex3f(wx + 0.25, wy - 0.35, wz)
-                    glVertex3f(wx + 0.25, wy + 0.35, wz)
-                    glVertex3f(wx - 0.25, wy + 0.35, wz)
-                    glEnd()
-
-
+   
     def update(self, dz):
         self.z += dz
 
@@ -73,9 +70,7 @@ class Building:
             (self.x, self.y + self.h / 2.0, self.z),
             (self.w, self.h, self.d),
             self.color
-    )
-        self.draw_windows()
-
+        )
 
 class Coin:
     def __init__(self, lane, x, z, size=0.8):
@@ -104,33 +99,40 @@ class Spawner:
         self.coin_chance = coin_chance
 
     def spawn_pattern(self, obstacles_list, coins_list):
-        # random pattern: normal cube, wide wall, or tall wall + possible coin
+        # random pattern: normal cube, wide wall, or tall wall
         lane = random.randint(0, len(self.lane_x_list) - 1)
         r = random.random()
+        
+        # 1. Spawn Obstacles
         if r < 0.6:
-            # normal obstacle in its lane
-            obstacles_list.append(Obstacle(lane, self.lane_x_list[lane], self.start_z, width=1.6, height=1.6))
+            # Normal obstacle (Cube)
+            obstacles_list.append(
+                Obstacle(lane, self.lane_x_list[lane], self.start_z, width=1.6, height=1.6)
+            )
         elif r < 0.85:
-            # wide wall spanning two lanes when possible
-            # choose a pair of lanes: ensure we can center between them
+            # Wide wall spanning two lanes (if possible)
             if lane == 0:
                 left = 0
             elif lane == len(self.lane_x_list) - 1:
                 left = len(self.lane_x_list) - 2
             else:
                 left = lane - 1
-            # width equals distance between centers of two lanes minus small gap
+            
+            # Calculate center point between the two lanes
             center_x = (self.lane_x_list[left] + self.lane_x_list[left + 1]) / 2.0
+            # Width is the distance between lanes * 2, minus a small gap
             width = abs(self.lane_x_list[left + 1] - self.lane_x_list[left]) * 2.0 - 0.3
+            
             obj = Obstacle(left, center_x, self.start_z, width=width, height=1.8)
-            # set lane to left to approximate blocking logic (works for lane-block checks)
-            obj.lane = left
             obstacles_list.append(obj)
         else:
-            # tall wall
-            obstacles_list.append(Obstacle(lane, self.lane_x_list[lane], self.start_z, width=1.8, height=2.4))
+            # Tall wall
+            obstacles_list.append(
+                Obstacle(lane, self.lane_x_list[lane], self.start_z, width=1.8, height=3.5)
+            )
 
-        # coin spawn
+        # 2. Spawn Coins
         if random.random() < self.coin_chance:
             cl = random.randint(0, len(self.lane_x_list) - 1)
+            # Spawn coin slightly behind the obstacle (z + 8.0)
             coins_list.append(Coin(cl, self.lane_x_list[cl], self.start_z + 8.0))

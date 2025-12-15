@@ -29,7 +29,9 @@ SPAWN_INTERVAL = 0.8
 COIN_SPAWN_CHANCE = 0.28
 road_half_width = (LANE_SPACING * (LANE_COUNT - 1)) / 2.0
 side_offset = road_half_width + 12
-BUILDING_SPAWN_AHEAD = 18.0  # how far ahead of camera (tweak 15–25)
+BLOCK_LENGTH = 15.0
+BUILDING_SPAWN_BLOCKS = 10
+BUILDING_SPAWN_AHEAD = BLOCK_LENGTH * BUILDING_SPAWN_BLOCKS  # = 30.0
 
 
 # Lateral move scaling defaults (tie lateral duration to forward speed)
@@ -74,6 +76,8 @@ class Game:
 
         self.clock = pygame.time.Clock()
         self.player = Player(LANE_X, start_lane=1, y=-1.0, z=PLAYER_Z)
+        self.next_building_spawn_z = self.player.z - BUILDING_SPAWN_AHEAD
+
         print("[DEBUG] Player start lane:", self.player.lane)
         print("[DEBUG] Player start x:", self.player.x)
 
@@ -104,6 +108,18 @@ class Game:
         self.player = Player(LANE_X, start_lane=1, y=-1.0, z=PLAYER_Z)
         self.obstacles = []
         self.coins = []
+        self.buildings = []
+        
+        # Start spawn cursor slightly ahead of camera
+        self.next_building_spawn_z = CAMERA_POS[2] + 5.0
+
+        # Pre-fill world
+        # CHANGED: range(100) -> range(40). 
+        # Since BLOCK_LENGTH is now 15.0, 40 blocks covers 600 units of distance.
+        for _ in range(40):
+            self.spawn_buildings(self.next_building_spawn_z)
+            self.next_building_spawn_z -= BLOCK_LENGTH
+
         self.spawn_timer = 0.0
         self.spawn_interval = SPAWN_INTERVAL
         self.speed = OBSTACLE_SPEED
@@ -134,34 +150,38 @@ class Game:
     def update(self, dt):
         PARALLAX = 0.35
 
+        # STOP updating if game is over (this ensures generation stops when you lose)
         if self.state != "playing":
             return
 
-        # accelerate forward speed slightly every frame
+        # 1. Speed Progression
         self.speed += dt * 0.9
 
-        # scale lateral move duration with forward speed so feel stays consistent
-        # higher forward speed -> shorter lateral duration (snappier)
+        # 2. Controls Feel (Scale lateral speed)
         scaled = BASE_MOVE_DURATION * (BASE_FORWARD_SPEED / max(1e-6, self.speed))
         self.player.move_duration = max(MIN_MOVE_DURATION, min(MAX_MOVE_DURATION, scaled))
 
-        # spawning logic
-        
-
+        # 3. Movement Calculations
         dz = self.speed * dt
+        
+        # Move the invisible "spawn cursor" so it stays with the moving world
+        # [CRITICAL FIX] This ensures infinite generation doesn't get left behind
+        self.next_building_spawn_z += dz * PARALLAX
+
+        # 4. Update Objects (Obstacles & Coins)
         for o in self.obstacles:
             o.update(dz)
         for c in self.coins:
             c.update(dz)
 
-        # remove objects that passed camera
+        # Remove objects behind camera
         self.obstacles = [o for o in self.obstacles if o.z < CAMERA_POS[2] + 8.0]
         self.coins = [c for c in self.coins if c.z < CAMERA_POS[2] + 8.0]
 
-        # update player (this sets prev_x then interpolates to x)
+        # 5. Update Player
         self.player.update(dt, self.obstacles)
 
-        # Build swept AABB for the player covering lateral movement this frame
+        # 6. Collision Detection
         px = self.player.x
         prev_px = getattr(self.player, "prev_x", px)
         hx = self.player.w / 2.0
@@ -173,19 +193,17 @@ class Game:
         pmin_swept = (swept_min_x, self.player.y - hy, self.player.z - hz)
         pmax_swept = (swept_max_x, self.player.y + hy, self.player.z + hz)
 
-        # coin collection using swept AABB (so coins collected mid-slide)
+        # Coins
         for c in list(self.coins):
             cmin, cmax = c.rect()
             if aabb(pmin_swept, pmax_swept, cmin, cmax):
-                try:
-                    self.coins.remove(c)
-                except ValueError:
-                    pass
+                try: self.coins.remove(c)
+                except ValueError: pass
                 self.score += 10
                 self.player.color = (0.48, 1.0, 0.6)
                 self.player.flash = 0.25
 
-        # obstacle collision using swept AABB so collisions during slide are fair
+        # Obstacles
         for o in list(self.obstacles):
             omin, omax = o.rect()
             if aabb(pmin_swept, pmax_swept, omin, omax):
@@ -194,17 +212,28 @@ class Game:
                 self.highscore = max(self.highscore, self.score)
                 save_high_score(self.highscore)
                 break
+        
+        # 7. Spawn Pattern for Obstacles
         self.spawn_timer += dt
         if self.spawn_timer >= self.spawn_interval:
             self.spawn_timer = 0.0
-            self.spawn_buildings()
             self.spawn()
             self.spawn_interval = max(0.4, self.spawn_interval * 0.995)
-        for b in self.buildings:
-            b.update(dz)
-        self.buildings = [b for b in self.buildings if b.z < CAMERA_POS[2] + 10.0]
+        
+        # 8. Infinite Building Generation
+        # Move existing buildings
         for b in self.buildings:
              b.update(dz * PARALLAX)
+        
+        # Remove buildings that are way behind the camera
+        self.buildings = [b for b in self.buildings if b.z < CAMERA_POS[2] + 20.0]
+        
+        # Fill the horizon with new buildings
+        spawn_horizon = self.player.z - BUILDING_SPAWN_AHEAD
+        
+        while self.next_building_spawn_z >= spawn_horizon:
+            self.spawn_buildings(self.next_building_spawn_z) 
+            self.next_building_spawn_z -= BLOCK_LENGTH
 
     def look_at_camera(self):
         glLoadIdentity()
@@ -327,26 +356,30 @@ class Game:
             pygame.display.flip()
         pygame.quit()
 
-    def spawn_buildings(self):
+    def spawn_buildings(self, z_val):
+        # We use the specific Z passed to the function, not the Camera position
+        # This ensures they lock to the grid perfectly.
+        
         road_half_width = (LANE_SPACING * (LANE_COUNT - 1)) / 2.0
         side_offset = road_half_width + 4.5
 
         for side in (-1, 1):  # left & right
             x = side * side_offset
-            z = CAMERA_POS[2] - BUILDING_SPAWN_AHEAD - random.uniform(0, 5)
+            
+            # Add slight random offset to Z, but keep it centered on z_val
+            z = z_val + random.uniform(-1.0, 1.0)
 
             if random.random() < 0.7:
                 height = random.uniform(4.0, 10.0)
             else:
                 height = random.uniform(12.0, 22.0)
+            
             width  = random.uniform(2.5, 4.0)
             depth  = random.uniform(8.0, 12.0)
 
             self.buildings.append(
-            Building(x, z, width=width, depth=depth, height=height)
+                Building(x, z, width=width, depth=depth, height=height)
             )
-        print("[DEBUG] buildings count:", len(self.buildings))
-
 
 
 
