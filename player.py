@@ -64,19 +64,106 @@ class CarModel:
         self.color = COL_PLAYER
 
     def draw(self):
-        # body
-        draw_cube((self.x, self.y + 0.12, self.z), (self.w, self.h, self.d), self.color)
-        # windshield: dark small box
-        glColor3f(0.06, 0.09, 0.16)
-        draw_cube((self.x, self.y + 0.28, self.z + 0.35), (self.w*0.8, 0.32, 0.9), (0,0,0))
-        # wheels (cylinders)
-        wheel_color = (0.08, 0.08, 0.1)
-        dx = self.w * 0.45
-        dz = self.d * 0.38
-        draw_cylinder((self.x - dx, self.y - 0.18, self.z + dz), 0.28, 0.18, axis='z', color=wheel_color)
-        draw_cylinder((self.x + dx, self.y - 0.18, self.z + dz), 0.28, 0.18, axis='z', color=wheel_color)
-        draw_cylinder((self.x - dx, self.y - 0.18, self.z - dz), 0.28, 0.18, axis='z', color=wheel_color)
-        draw_cylinder((self.x + dx, self.y - 0.18, self.z - dz), 0.28, 0.18, axis='z', color=wheel_color)
+        x, y, z = self.x, self.y, self.z
+
+        body_color = self.color
+        dark = tuple(c * 0.7 for c in body_color)
+        glass = (0.08, 0.12, 0.18)
+        trim = (0.75, 0.75, 0.78)
+        wheel = (0.12, 0.12, 0.14)
+        light = (1.0, 1.0, 0.85)
+        tail = (0.9, 0.15, 0.15)
+
+    # ======================
+    # MAIN BODY
+    # ======================
+        draw_cube(
+            (x, y + 0.25, z),
+            (1.9, 0.5, 3.2),
+            body_color
+        )
+
+    # ======================
+    # ROOF
+    # ======================
+        draw_cube(
+            (x, y + 0.7, z + 0.3),
+            (1.3, 0.45, 1.6),
+            dark
+        )
+
+    # ======================
+    # HOOD
+    # ======================
+        draw_cube(
+            (x, y + 0.2, z + 1.9),
+            (1.8, 0.35, 0.6),
+            dark
+        )
+
+    # ======================
+    # WINDSHIELD
+    # ======================
+        glPushMatrix()
+        glTranslatef(x, y + 0.7, z + 1.1)
+        glRotatef(-20, 1, 0, 0)
+        draw_cube((0, 0, 0), (1.2, 0.35, 0.1), glass)
+        glPopMatrix()
+
+    # ======================
+    # REAR WINDOW
+    # ======================
+        glPushMatrix()
+        glTranslatef(x, y + 0.7, z - 0.7)
+        glRotatef(15, 1, 0, 0)
+        draw_cube((0, 0, 0), (1.2, 0.35, 0.1), glass)
+        glPopMatrix()
+
+    # ======================
+    # HEADLIGHTS
+    # ======================
+        for side in (-1, 1):
+            draw_cube(
+                (x + side * 0.55, y + 0.15, z + 2.1),
+                (0.25, 0.18, 0.12),
+                light
+            )
+
+    # ======================
+    # TAILLIGHTS
+    # ======================
+        for side in (-1, 1):
+            draw_cube(
+                (x + side * 0.55, y + 0.2, z - 2.0),
+                (0.25, 0.15, 0.12),
+                tail
+            )
+
+    # ======================
+    # BUMPERS
+    # ======================
+        draw_cube((x, y + 0.05, z + 2.25), (1.9, 0.15, 0.25), trim)
+        draw_cube((x, y + 0.05, z - 2.15), (1.9, 0.15, 0.2), trim)
+
+  
+        # ======================
+        # WHEELS (fixed & clean)
+        # ======================
+        wheel_y = y - 0.25
+        wheel_w = 0.25   # thickness
+        wheel_h = 0.35   # height
+        wheel_d = 0.6    # diameter
+
+        for side in (-1, 1):
+            for dz in (1.25, -1.25):
+                draw_cube(
+                    (x + side * 1.05, wheel_y, z + dz),
+                    (wheel_w, wheel_h, wheel_d),
+                    wheel
+                )
+
+
+
 
 class Player:
     def __init__(self, lane_x_list, start_lane, y, z):
