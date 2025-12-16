@@ -30,7 +30,7 @@ COIN_SPAWN_CHANCE = 0.28
 road_half_width = (LANE_SPACING * (LANE_COUNT - 1)) / 2.0
 side_offset = road_half_width + 12
 BLOCK_LENGTH = 15.0
-BUILDING_SPAWN_BLOCKS = 10
+BUILDING_SPAWN_BLOCKS = 25  # Increased from 10 to cover more distance
 BUILDING_SPAWN_AHEAD = BLOCK_LENGTH * BUILDING_SPAWN_BLOCKS  # = 30.0
 
 
@@ -218,13 +218,9 @@ class Game:
         self.player.move_duration = max(MIN_MOVE_DURATION, min(MAX_MOVE_DURATION, scaled))
 
         dz = self.speed * dt
-        self.next_building_spawn_z += dz * PARALLAX
-
-
 
         # Accelerate
         self.road_scroll += self.speed * dt
-
 
         # Combo timer
         if self.combo > 0:
@@ -233,29 +229,15 @@ class Game:
                 self.combo = 0
                 self.combo_timer = 0.0
 
-
-        # Spawning
-        self.spawn_timer += dt
-        if self.spawn_timer >= self.spawn_interval:
-            self.spawn_timer = 0.0
-            self.spawn_buildings()
-            self.spawn()
-            self.spawn_interval = max(0.4, self.spawn_interval * 0.995)
-
-
-
-        
         for o in self.obstacles:
             o.update(dz)
         for c in self.coins:
             c.update(dz)
-        for b in self.buildings:
-            b.update(dz * PARALLAX)
-
+            
         # Remove passed objects
         self.obstacles = [o for o in self.obstacles if o.z < CAMERA_POS[2] + 8.0]
         self.coins = [c for c in self.coins if c.z < CAMERA_POS[2] + 8.0]
-        self.buildings = [b for b in self.buildings if b.z < CAMERA_POS[2] + 10.0]
+        self.buildings = [b for b in self.buildings if b.z < CAMERA_POS[2] + 20.0]
 
         # Update player
         self.player.update(dt, self.obstacles)
@@ -281,6 +263,9 @@ class Game:
                 except ValueError:
                     pass
                 
+                # 🔊 PLAY COIN SOUND
+                if self.coin_fx:
+                    self.coin_fx.play()
                 self.combo += 1
                 self.combo_timer = self.combo_timeout
                 self.max_combo = max(self.max_combo, self.combo)
@@ -304,7 +289,6 @@ class Game:
                 elif self.score > 150 and self.score % 50 == 0: self.speed += 1.5
 
         # --- OBSTACLE LOGIC ---
-        # Obstacle collision
         for o in list(self.obstacles):
             omin, omax = o.rect()
             if aabb(pmin_swept, pmax_swept, omin, omax):
@@ -312,7 +296,6 @@ class Game:
                 
                 # PLAY CRASH SOUND
                 if self.crash_fx: self.crash_fx.play()
-                # PAUSE MUSIC
                 pygame.mixer.music.pause()
 
                 self.state = "gameover"
@@ -327,13 +310,17 @@ class Game:
             self.spawn()
             self.spawn_interval = max(0.4, self.spawn_interval * 0.995)
         
+        # --- BUILDING SPAWN LOGIC (FIXED) ---
         for b in self.buildings: b.update(dz * PARALLAX)
         self.buildings = [b for b in self.buildings if b.z < CAMERA_POS[2] + 20.0]
+        
+        # [FIX] Move the spawn cursor forward just like the buildings!
+        self.next_building_spawn_z += dz * PARALLAX 
+        
         spawn_horizon = self.player.z - BUILDING_SPAWN_AHEAD
         while self.next_building_spawn_z >= spawn_horizon:
             self.spawn_buildings(self.next_building_spawn_z) 
             self.next_building_spawn_z -= BLOCK_LENGTH
-            
 
     def look_at_camera(self):
         glLoadIdentity()
@@ -477,29 +464,7 @@ class Game:
                 t4 = self.font.render("Press R to restart", True, (180, 180, 180))
                 surf.blit(t4, (WIN_W//2 - t4.get_width()//2, WIN_H//2 + 30))
 
-    def spawn_buildings(self):
-        """THIS METHOD MUST BE INSIDE GAME CLASS"""
-        road_half_width = (LANE_SPACING * (LANE_COUNT - 1)) / 2.0
-        side_offset = road_half_width + 4.5
-
-        for side in (-1, 1):
-            x = side * side_offset
-            z = CAMERA_POS[2] - BUILDING_SPAWN_AHEAD - random.uniform(0, 5)
-
-            if random.random() < 0.7:
-                height = random.uniform(4.0, 10.0)
-            else:
-                height = random.uniform(12.0, 22.0)
-            
-            width = random.uniform(2.5, 4.0)
-            depth = random.uniform(8.0, 12.0)
-
-            self.buildings.append(
-                Building(x, z, width=width, depth=depth, height=height)
-            )
-        
-        print("[DEBUG] buildings count:", len(self.buildings))
-
+  
     def run(self):
         while self.running:
             dt = self.clock.tick(FPS) / 1000.0
