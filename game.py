@@ -114,6 +114,9 @@ class Game:
         try:
             self.coin_fx = pygame.mixer.Sound("assets/coin.wav")
             self.coin_fx.set_volume(0.6) # Adjust volume (0.0 to 1.0)
+
+            self.horn_fx = pygame.mixer.Sound("assets/horn.mp3")
+            self.horn_fx.set_volume(0.7)  # Adjust volume (0.0 to 1.0)
             
             self.crash_fx = pygame.mixer.Sound("assets/losing.wav")
             self.crash_fx.set_volume(0.8)
@@ -193,6 +196,9 @@ class Game:
             if key == K_SPACE:
                 self.reset()
         elif self.state == "playing":
+            if key == K_SPACE:
+                if self.horn_fx:
+                    self.horn_fx.play()
             if key == K_LEFT:
                 _ = self.player.request_move(-1, self.obstacles)
             elif key == K_RIGHT:
@@ -390,9 +396,9 @@ class Game:
             
             score_surf = self.font.render(f"Score: {self.score}", True, (255,255,220))
             surf.blit(score_surf, (12, 8))
-            
+            W = surf.get_width()
             hs_surf = self.font.render(f"High: {self.highscore}", True, (255,255,220))
-            surf.blit(hs_surf, (WIN_W - hs_surf.get_width() - 12, 8))
+            surf.blit(hs_surf, (W - hs_surf.get_width() - 12, 8))
             
             if self.combo > 1:
                 if self.combo < 5:
@@ -439,8 +445,9 @@ class Game:
             surf.fill((10, 10, 12, 220))
             score_surf = self.font.render(f"Score: {self.score}", True, (255,255,220))
             surf.blit(score_surf, (12, 8))
+            W = surf.get_width()
             hs_surf = self.font.render(f"High: {self.highscore}", True, (255,255,220))
-            surf.blit(hs_surf, (WIN_W - hs_surf.get_width() - 12, 8))
+            surf.blit(hs_surf, (W - hs_surf.get_width() - 12, 8))
 
             if self.state == "menu":
                 title = self.large_font.render("Lane3D Runner", True, (255, 240, 140))
